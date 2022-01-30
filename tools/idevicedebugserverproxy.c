@@ -133,6 +133,8 @@ static void* connection_handler(void* data)
 
 			uint32_t sent = 0;
 			debugserver_client_send(socket_info->debugserver_client, buf, n, &sent);
+			buf[n] = '\0';
+			fprintf(stderr, "Send: %s\n", buf);
 		}
 		do {
 			uint32_t r = 0;
@@ -140,6 +142,8 @@ static void* connection_handler(void* data)
 			if (r > 0) {
 				socket_send(client_fd, buf, r);
 				dtimeout = 1;
+				buf[r] = '\0';
+				fprintf(stderr, "Receive: %s\n", buf);
 			} else if (derr == DEBUGSERVER_E_TIMEOUT) {
 				dtimeout = 5;
 				break;

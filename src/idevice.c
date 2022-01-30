@@ -734,7 +734,9 @@ LIBIMOBILEDEVICE_API idevice_error_t idevice_connection_receive_timeout(idevice_
 			} else {
 				int sslerr = SSL_get_error(connection->ssl_data->session, r);
 				if (sslerr == SSL_ERROR_WANT_READ) {
-					continue;
+					debug_info("SSL ERROR: SSL_ERROR_WANT_READ, break");
+				} else {
+					debug_info("SSL ERROR: %d (from ret: %d)", sslerr, r);
 				}
 				break;
 			}
@@ -877,7 +879,7 @@ typedef int ssl_cb_ret_type_t;
 /**
  * Internally used SSL callback function for receiving encrypted data.
  */
-static ssl_cb_ret_type_t internal_ssl_read(idevice_connection_t connection, char *buffer, size_t length)
+static ssl_cb_ret_type_t internal_ssl_read(BIO *b, idevice_connection_t connection, char *buffer, size_t length)
 {
 	uint32_t bytes = 0;
 	uint32_t pos = 0;
@@ -886,6 +888,7 @@ static ssl_cb_ret_type_t internal_ssl_read(idevice_connection_t connection, char
 
 	debug_info("pre-read length = %zi bytes", length);
 
+	BIO_clear_retry_flags(b);
 	/* repeat until we have the full data or an error occurs */
 	do {
 		bytes = 0;
@@ -895,7 +898,10 @@ static ssl_cb_ret_type_t internal_ssl_read(idevice_connection_t connection, char
 			res = internal_connection_receive_timeout(connection, buffer + pos, (uint32_t)length - pos, &bytes, (unsigned int)timeout);
 		}
 		if (res != IDEVICE_E_SUCCESS) {
-			if (res != IDEVICE_E_TIMEOUT) {
+			if (res == IDEVICE_E_TIMEOUT) {
+				debug_info("ERROR: Timeout");
+				BIO_set_retry_read(b);
+			} else {
 				debug_info("ERROR: %s returned %d", (timeout == (unsigned int)-1) ? "internal_connection_receive" : "internal_connection_receive_timeout", res);
 			}
 			connection->status = res;
@@ -983,7 +989,7 @@ static long ssl_idevice_bio_callback(BIO *b, int oper, const char *argp, int arg
 	size_t len = (size_t)argi;
 	switch (oper) {
 	case (BIO_CB_READ|BIO_CB_RETURN):
-		return argp ? (long)internal_ssl_read(conn, (char *)argp, len) : 0;
+		return argp ? (long)internal_ssl_read(b, conn, (char *)argp, len) : 0;
 	case (BIO_CB_PUTS|BIO_CB_RETURN):
 		len = strlen(argp);
 		// fallthrough
